@@ -395,13 +395,19 @@ def manage_hoa():
     if not logged_in():
         return redirect("/")
 
-    today = date.today().isoformat()
+    today = date.today()
 
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT * FROM public.hoas ORDER BY name;")
     hoas = cur.fetchall()
     conn.close()
+
+    for h in hoas:
+        if h["subscription_start"] and isinstance(h["subscription_start"], str):
+            h["subscription_start"] = date.fromisoformat(h["subscription_start"])
+        if h["subscription_end"] and isinstance(h["subscription_end"], str):
+            h["subscription_end"] = date.fromisoformat(h["subscription_end"])
 
     return render_template_string(
         BASE_HEAD + """
