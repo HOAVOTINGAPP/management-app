@@ -66,6 +66,9 @@ def init_management_schema():
         subscription_start DATE NOT NULL,
         subscription_end DATE NOT NULL,
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        portal_title TEXT,
+        brand_color TEXT DEFAULT '#2563eb',
+        logo_url TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     """)
@@ -310,11 +313,32 @@ def hoa_create():
         conn = get_conn()
         cur = conn.cursor()
 
+        portal_title = request.form.get("portal_title") or name
+        brand_color = request.form.get("brand_color") or "#2563eb"
+        logo_url = request.form.get("logo_url")
+
         cur.execute("""
-        INSERT INTO public.hoas (name, schema_name, subscription_start, subscription_end)
-        VALUES (%s,%s,%s,%s)
+        INSERT INTO public.hoas (
+            name,
+            schema_name,
+            subscription_start,
+            subscription_end,
+            portal_title,
+            brand_color,
+            logo_url
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
         RETURNING id;
-        """, (name, schema_name, start, end))
+        """, (
+            name,
+            schema_name,
+            start,
+            end,
+            portal_title,
+            brand_color,
+            logo_url
+        ))
+
 
         hoa_id = cur.fetchone()["id"]
         conn.commit()
@@ -331,10 +355,22 @@ def hoa_create():
 {% if msg %}<p class=ok>{{msg}}</p>{% endif %}
 <form method=post>
 <p>Name<br><input name=name required></p>
+
+<p>Portal Title<br>
+<input name=portal_title placeholder="Optional custom title"></p>
+
+<p>Brand Color<br>
+<input name=brand_color placeholder="#2563eb"></p>
+
+<p>Logo URL<br>
+<input name=logo_url placeholder="https://example.com/logo.png"></p>
+
 <p>Start<br><input type=date name=start required></p>
 <p>End<br><input type=date name=end required></p>
+
 <button>Create</button>
-</form></div>
+</form>
+
 """ + BASE_TAIL,
         msg=msg
     )
