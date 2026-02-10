@@ -460,8 +460,19 @@ def manage_hoa():
 {{'Expired' if expired else 'Disabled' if not h.enabled else 'Active'}}
 </td>
 <td>
+
 <a class="btn small" href="/dashboard/manage-hoa/{{h.id}}/users">Users</a>
+
 <a class="btn small" href="/toggle-hoa/{{h.id}}">Toggle</a>
+
+<a class="btn small" href="/dashboard/manage-hoa/{{h.id}}/edit">Edit</a>
+
+<a class="btn small bad"
+   onclick="return confirm('Disable HOA? This will prevent login and voting.')"
+   href="/delete-hoa/{{h.id}}">
+Delete
+</a>
+
 </td>
 </tr>
 {% endfor %}
@@ -597,6 +608,82 @@ def toggle_user(id):
     conn.commit()
     conn.close()
     return redirect(request.referrer or "/dashboard/manage-hoa")
+
+# ======================================================
+# Edit HOA subscription (renewal support)
+# ======================================================
+
+@app.route("/dashboard/manage-hoa/<int:id>/edit", methods=["GET", "POST"])
+def edit_hoa(id):
+
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    if request.method == "POST":
+
+        start = request.form["start"]
+        end = request.form["end"]
+
+        cur.execute(
+            """
+            UPDATE public.hoas
+            SET subscription_start=%s,
+                subscription_end=%s,
+                enabled=TRUE
+            WHERE id=%s
+            """,
+            (start, end, id)
+        )
+
+        conn.commit()
+        conn.close()
+
+        return redirect("/dashboard/manage-hoa")
+
+    cur.execute(
+        """
+        SELECT *
+        FROM public.hoas
+        WHERE id=%s
+        """,
+        (id,)
+    )
+
+    hoa = cur.fetchone()
+
+    conn.close()
+
+    return render_template_string(
+        BASE_HEAD + """
+<div class=card>
+
+<h2>Edit HOA Subscription</h2>
+
+<form method=post>
+
+<p>
+Subscription Start<br>
+<input type=date name=start
+value="{{hoa.subscription_start}}" required>
+</p>
+
+<p>
+Subscription End<br>
+<input type=date name=end
+value="{{hoa.subscription_end}}" required>
+</p>
+
+<button>Save Changes</button>
+
+</form>
+
+</div>
+""" + BASE_TAIL,
+        hoa=hoa
+    )
 
 # ======================================================
 # Delete actions (legacy routes preserved)
