@@ -4,6 +4,7 @@ import hmac
 import hashlib
 from datetime import date
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 from flask import Flask, request, redirect, render_template_string, session
 
@@ -40,6 +41,7 @@ def enforce_subscription_expiry():
         SET enabled = FALSE
         WHERE subscription_end < CURRENT_DATE
         AND enabled = TRUE
+        AND deleted_at IS NULL
     """)
 
     conn.commit()
@@ -86,7 +88,8 @@ def init_management_schema():
         portal_title TEXT,
         brand_color TEXT DEFAULT '#2563eb',
         logo_url TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        deleted_at TIMESTAMPTZ
     );
     """)
 
@@ -266,6 +269,7 @@ button:hover,a.btn:hover{background:var(--accd)}
  <a href="/dashboard/manage-hoa">Manage HOA</a>
  <a href="/dashboard/security">Security</a>
  <a href="/logout">Logout</a>
+ <a href="/dashboard/recycle-bin">Recycle Bin</a>
 </nav>
 """
 
@@ -403,7 +407,12 @@ def hoa_user_create():
 
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT id,name FROM public.hoas ORDER BY name;")
+    cur.execute("""
+    SELECT id,name
+    FROM public.hoas
+    WHERE deleted_at IS NULL
+    ORDER BY name;
+    """)
     hoas = cur.fetchall()
 
     msg = None
@@ -452,7 +461,12 @@ def manage_hoa():
 
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM public.hoas ORDER BY name;")
+    cur.execute("""
+    SELECT *
+    FROM public.hoas
+    WHERE deleted_at IS NULL
+    ORDER BY name;
+    """)
     hoas = cur.fetchall()
     conn.close()
 
@@ -499,6 +513,203 @@ Hard Delete
         hoas=hoas,
         today=today
     )
+
+# ======================================================
+# Recycle Bin — View deleted HOAs
+# ======================================================
+
+@app.route("/dashboard/recycle-bin")
+def recycle_bin():
+
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT *
+        FROM public.hoas
+        WHERE deleted_at IS NOT NULL
+        ORDER BY deleted_at DESC
+    """)
+
+    hoas = cur.fetchall()
+
+    conn.close()
+
+    return render_template_string(
+        BASE_HEAD + """
+<div class=card>
+
+<h2>Recycle Bin</h2>
+
+<table>
+
+<tr>
+<th>Name</th>
+<th>Schema</th>
+<th>Deleted At</th>
+<th>Actions</th>
+</tr>
+
+{% for h in hoas %}
+
+<tr>
+
+<td>{{h.name}}</td>
+
+<td>{{h.schema_name}}</td>
+
+<td>{{h.deleted_at}}</td>
+
+<td>
+
+<a class="btn small"
+href="/restore-hoa/{{h.id}}">
+Restore
+</a>
+
+<a class="btn small bad"
+href="/permanent-delete-hoa/{{h.id}}">
+Permanent Delete
+</a>
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+""" + BASE_TAIL,
+        hoas=hoas
+    )
+
+# ======================================================
+# Restore HOA from recycle bin
+# ======================================================
+
+@app.route("/restore-hoa/<int:id>")
+def restore_hoa(id):
+
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE public.hoas
+        SET deleted_at = NULL,
+            enabled = TRUE
+        WHERE id=%s
+        """,
+        (id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/dashboard/recycle-bin")
+
+# ======================================================
+# Permanent Delete HOA (irreversible)
+# ======================================================
+
+@app.route("/permanent-delete-hoa/<int:id>", methods=["GET", "POST"])
+def permanent_delete_hoa(id):
+
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    if request.method == "GET":
+
+        return render_template_string(
+            BASE_HEAD + """
+<div class=card>
+
+<h2>Permanent Delete HOA</h2>
+
+<p class=bad>
+This permanently deletes ALL HOA data.
+</p>
+
+<form method=post>
+
+Superadmin Password:<br>
+<input type=password name=password required>
+
+<br><br>
+
+<button class="btn bad">
+Confirm Permanent Delete
+</button>
+
+</form>
+
+</div>
+""" + BASE_TAIL
+        )
+
+    password = request.form["password"]
+
+    cur.execute(
+        "SELECT password FROM public.super_admins LIMIT 1"
+    )
+
+    admin = cur.fetchone()
+
+    if not admin or not verify_password(admin["password"], password):
+
+        conn.close()
+
+        return render_template_string(
+            BASE_HEAD + """
+<div class=card>
+Invalid password
+</div>
+""" + BASE_TAIL
+        )
+
+    cur.execute(
+        "SELECT schema_name FROM public.hoas WHERE id=%s",
+        (id,)
+    )
+
+    hoa = cur.fetchone()
+
+    if hoa:
+
+        schema = hoa["schema_name"]
+
+        from psycopg2 import sql
+
+        cur.execute(
+            sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE")
+            .format(sql.Identifier(schema))
+        )
+
+        cur.execute(
+            "DELETE FROM public.hoa_users WHERE hoa_id=%s",
+            (id,)
+        )
+
+        cur.execute(
+            "DELETE FROM public.hoas WHERE id=%s",
+            (id,)
+        )
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/dashboard/recycle-bin")
 
 # ======================================================
 # Manage HOA Users
@@ -796,20 +1007,18 @@ Superadmin Password<br>
 
     schema = hoa["schema_name"]
 
-    # DROP SCHEMA AND ALL DATA
-    cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE;")
+    # MOVE TO RECYCLE BIN (do not drop schema yet)
 
-    # DELETE HOA USERS
     cur.execute(
-        "DELETE FROM public.hoa_users WHERE hoa_id=%s",
+        """
+        UPDATE public.hoas
+        SET deleted_at = NOW(),
+            enabled = FALSE
+        WHERE id=%s
+        """,
         (id,)
     )
 
-    # DELETE HOA RECORD
-    cur.execute(
-        "DELETE FROM public.hoas WHERE id=%s",
-        (id,)
-    )
 
     conn.commit()
     conn.close()
