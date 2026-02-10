@@ -20,6 +20,9 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-in-production")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+@app.before_request
+def auto_disable_expired_hoas():
+    enforce_subscription_expiry()
 
 # ======================================================
 # DB helpers (NO GLOBAL CONNECTIONS)
@@ -27,6 +30,20 @@ app.secret_key = SECRET_KEY
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+def enforce_subscription_expiry():
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE public.hoas
+        SET enabled = FALSE
+        WHERE subscription_end < CURRENT_DATE
+        AND enabled = TRUE
+    """)
+
+    conn.commit()
+    conn.close()
 
 # ======================================================
 # Password security (legacy compatible)
@@ -470,7 +487,7 @@ def manage_hoa():
 <a class="btn small bad"
    onclick="return confirm('Disable HOA? This will prevent login and voting.')"
    href="/delete-hoa/{{h.id}}">
-Delete
+Hard Delete
 </a>
 
 </td>
@@ -705,17 +722,92 @@ def delete_user(id):
     return redirect(request.referrer or "/dashboard/manage-hoa")
 
 
-@app.route("/delete-hoa/<int:id>")
+@app.route("/delete-hoa/<int:id>", methods=["GET", "POST"])
 def delete_hoa(id):
+
     if not logged_in():
         return redirect("/")
 
-    # Soft-delete only (approved deviation from legacy)
     conn = get_conn()
     cur = conn.cursor()
 
+    # SHOW PASSWORD CONFIRMATION FORM
+    if request.method == "GET":
+
+        return render_template_string(
+            BASE_HEAD + """
+<div class=card>
+
+<h2>Confirm HARD DELETE</h2>
+
+<p class=bad>
+This will permanently delete the HOA and ALL voting data.
+This action cannot be undone.
+</p>
+
+<form method=post>
+
+<p>
+Superadmin Password<br>
+<input type=password name=password required>
+</p>
+
+<button class="btn bad">Confirm Hard Delete</button>
+
+</form>
+
+</div>
+""" + BASE_TAIL
+        )
+
+    # VERIFY PASSWORD
+    password = request.form["password"]
+
     cur.execute(
-        "UPDATE public.hoas SET enabled=FALSE WHERE id=%s",
+        "SELECT password FROM public.super_admins WHERE enabled=TRUE LIMIT 1"
+    )
+
+    admin = cur.fetchone()
+
+    if not admin or not verify_password(admin["password"], password):
+
+        conn.close()
+
+        return render_template_string(
+            BASE_HEAD + """
+<div class=card>
+<p class=bad>Invalid superadmin password.</p>
+<a href="/dashboard/manage-hoa" class="btn small">Back</a>
+</div>
+""" + BASE_TAIL
+        )
+
+    # GET SCHEMA NAME
+    cur.execute(
+        "SELECT schema_name FROM public.hoas WHERE id=%s",
+        (id,)
+    )
+
+    hoa = cur.fetchone()
+
+    if not hoa:
+        conn.close()
+        return redirect("/dashboard/manage-hoa")
+
+    schema = hoa["schema_name"]
+
+    # DROP SCHEMA AND ALL DATA
+    cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE;")
+
+    # DELETE HOA USERS
+    cur.execute(
+        "DELETE FROM public.hoa_users WHERE hoa_id=%s",
+        (id,)
+    )
+
+    # DELETE HOA RECORD
+    cur.execute(
+        "DELETE FROM public.hoas WHERE id=%s",
         (id,)
     )
 
@@ -723,6 +815,7 @@ def delete_hoa(id):
     conn.close()
 
     return redirect("/dashboard/manage-hoa")
+
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
