@@ -162,7 +162,8 @@ def provision_hoa_schema(schema_name: str):
         id BIGSERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT,
-        is_open BOOLEAN NOT NULL DEFAULT FALSE
+        is_open BOOLEAN NOT NULL DEFAULT FALSE,
+        vote_mode TEXT NOT NULL DEFAULT 'AGM'
     );
     """)
 
