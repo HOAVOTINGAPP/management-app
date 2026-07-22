@@ -6,7 +6,16 @@ from datetime import date
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
-from flask import Flask, request, redirect, render_template_string, session
+from flask import (
+    Flask,
+    request,
+    redirect,
+    render_template_string,
+    session,
+    url_for,
+)
+import uuid
+from supabase import create_client
 
 # ======================================================
 # Configuration (Render + Supabase)
@@ -14,6 +23,14 @@ from flask import Flask, request, redirect, render_template_string, session
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-in-production")
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_SECRET_KEY,
+)
 
 # ======================================================
 # App setup
@@ -910,7 +927,7 @@ def edit_hoa(id):
 
 <h2>HOA Profile</h2>
 
-<form method="post">
+<form method="post" enctype="multipart/form-data">
 
 <p>
 Estate Name<br>
