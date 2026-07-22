@@ -147,6 +147,84 @@ init_management_schema()
 def logged_in():
     return "admin" in session
 
+# ======================================================
+# Logo Upload Helpers
+# ======================================================
+
+ALLOWED_LOGO_EXTENSIONS = {
+    "png",
+    "jpg",
+    "jpeg",
+    "webp",
+}
+
+
+def allowed_logo_file(filename):
+
+    if not filename:
+        return False
+
+    if "." not in filename:
+        return False
+
+    extension = filename.rsplit(".", 1)[1].lower()
+
+    return extension in ALLOWED_LOGO_EXTENSIONS
+
+
+def upload_logo(hoa_id, uploaded_file):
+
+    if uploaded_file is None:
+        return None
+
+    if uploaded_file.filename == "":
+        return None
+
+    if not allowed_logo_file(uploaded_file.filename):
+        raise ValueError(
+            "Only PNG, JPG, JPEG and WEBP files are allowed."
+        )
+
+    extension = uploaded_file.filename.rsplit(".", 1)[1].lower()
+
+    filename = f"logo_{uuid.uuid4().hex}.{extension}"
+
+    storage_path = f"{hoa_id}/{filename}"
+
+    file_bytes = uploaded_file.read()
+
+    supabase.storage.from_("logos").upload(
+        path=storage_path,
+        file=file_bytes,
+        file_options={
+            "content-type": uploaded_file.content_type,
+            "upsert": True,
+        },
+    )
+
+    return storage_path
+
+
+def get_logo_public_url(storage_path):
+
+    if not storage_path:
+        return None
+
+    response = (
+        supabase
+        .storage
+        .from_("logos")
+        .get_public_url(storage_path)
+    )
+
+    if isinstance(response, str):
+        return response
+
+    if isinstance(response, dict):
+        return response.get("publicUrl")
+
+    return None
+
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
