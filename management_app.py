@@ -956,6 +956,13 @@ def edit_hoa(id):
         start = request.form["start"]
         end = request.form["end"]
 
+        uploaded_logo = request.files.get("logo")
+
+        # Upload will be connected in the next deployment.
+        # For now we simply accept the file without processing it.
+        if uploaded_logo and uploaded_logo.filename:
+            pass
+
         cur.execute(
             """
             UPDATE public.hoas
@@ -1042,12 +1049,28 @@ Brand Colour<br>
 </p>
 
 <p>
-Logo URL<br>
+Current Logo URL<br>
 <input
     type="text"
     name="logo_url"
     value="{{hoa.logo_url or ''}}">
 </p>
+
+<p>
+Upload New Logo<br>
+<input
+    type="file"
+    name="logo"
+    accept=".png,.jpg,.jpeg,.webp">
+</p>
+
+{% if hoa.logo_url %}
+<p>
+<img
+    src="{{hoa.logo_url}}"
+    style="max-height:120px;max-width:300px;border:1px solid #ccc;padding:8px;">
+</p>
+{% endif %}
 
 <hr>
 
