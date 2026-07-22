@@ -839,7 +839,7 @@ def toggle_user(id):
     return redirect(request.referrer or "/dashboard/manage-hoa")
 
 # ======================================================
-# Edit HOA subscription (renewal support)
+# Edit HOA Profile
 # ======================================================
 
 @app.route("/dashboard/manage-hoa/<int:id>/edit", methods=["GET", "POST"])
@@ -853,18 +853,36 @@ def edit_hoa(id):
 
     if request.method == "POST":
 
+        name = request.form["name"].strip()
+        portal_title = request.form["portal_title"].strip()
+        brand_color = request.form["brand_color"].strip() or "#2563eb"
+        logo_url = request.form["logo_url"].strip()
+
         start = request.form["start"]
         end = request.form["end"]
 
         cur.execute(
             """
             UPDATE public.hoas
-            SET subscription_start=%s,
+            SET
+                name=%s,
+                portal_title=%s,
+                brand_color=%s,
+                logo_url=%s,
+                subscription_start=%s,
                 subscription_end=%s,
                 enabled=TRUE
             WHERE id=%s
             """,
-            (start, end, id)
+            (
+                name,
+                portal_title,
+                brand_color,
+                logo_url,
+                start,
+                end,
+                id,
+            ),
         )
 
         conn.commit()
@@ -878,7 +896,7 @@ def edit_hoa(id):
         FROM public.hoas
         WHERE id=%s
         """,
-        (id,)
+        (id,),
     )
 
     hoa = cur.fetchone()
@@ -886,32 +904,86 @@ def edit_hoa(id):
     conn.close()
 
     return render_template_string(
-        BASE_HEAD + """
+        BASE_HEAD
+        + """
 <div class=card>
 
-<h2>Edit HOA Subscription</h2>
+<h2>HOA Profile</h2>
 
-<form method=post>
+<form method="post">
+
+<p>
+Estate Name<br>
+<input
+    type="text"
+    name="name"
+    value="{{hoa.name}}"
+    required>
+</p>
+
+<p>
+Schema Name<br>
+<input
+    type="text"
+    value="{{hoa.schema_name}}"
+    readonly
+    style="background:#eeeeee;">
+</p>
+
+<p>
+Portal Title<br>
+<input
+    type="text"
+    name="portal_title"
+    value="{{hoa.portal_title or ''}}">
+</p>
+
+<p>
+Brand Colour<br>
+<input
+    type="color"
+    name="brand_color"
+    value="{{hoa.brand_color or '#2563eb'}}">
+</p>
+
+<p>
+Logo URL<br>
+<input
+    type="text"
+    name="logo_url"
+    value="{{hoa.logo_url or ''}}">
+</p>
+
+<hr>
 
 <p>
 Subscription Start<br>
-<input type=date name=start
-value="{{hoa.subscription_start}}" required>
+<input
+    type="date"
+    name="start"
+    value="{{hoa.subscription_start}}"
+    required>
 </p>
 
 <p>
 Subscription End<br>
-<input type=date name=end
-value="{{hoa.subscription_end}}" required>
+<input
+    type="date"
+    name="end"
+    value="{{hoa.subscription_end}}"
+    required>
 </p>
+
+<br>
 
 <button>Save Changes</button>
 
 </form>
 
 </div>
-""" + BASE_TAIL,
-        hoa=hoa
+"""
+        + BASE_TAIL,
+        hoa=hoa,
     )
 
 # ======================================================
