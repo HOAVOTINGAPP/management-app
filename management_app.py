@@ -995,17 +995,34 @@ def edit_hoa(id):
         name = request.form["name"].strip()
         portal_title = request.form["portal_title"].strip()
         brand_color = request.form["brand_color"].strip() or "#2563eb"
-        logo_url = request.form["logo_url"].strip()
+
+        logo_path = request.form["logo_url"].strip()
 
         start = request.form["start"]
         end = request.form["end"]
 
         uploaded_logo = request.files.get("logo")
 
-        # Upload will be connected in the next deployment.
-        # For now we simply accept the file without processing it.
         if uploaded_logo and uploaded_logo.filename:
-            pass
+
+            try:
+                logo_path = upload_logo(id, uploaded_logo)
+
+            except Exception as ex:
+                conn.close()
+
+                return render_template_string(
+                    BASE_HEAD + f"""
+                    <div class=card>
+                        <h2>Logo Upload Failed</h2>
+                        <p>{str(ex)}</p>
+                        <br>
+                        <a class="btn" href="/dashboard/manage-hoa/{id}/edit">
+                            Back
+                        </a>
+                    </div>
+                    """ + BASE_TAIL
+                )
 
         cur.execute(
             """
@@ -1024,7 +1041,7 @@ def edit_hoa(id):
                 name,
                 portal_title,
                 brand_color,
-                logo_url,
+                logo_path,
                 start,
                 end,
                 id,
@@ -1034,7 +1051,7 @@ def edit_hoa(id):
         conn.commit()
         conn.close()
 
-        return redirect("/dashboard/manage-hoa")
+        return redirect(f"/dashboard/manage-hoa/{id}/edit")
 
     cur.execute(
         """
@@ -1049,6 +1066,8 @@ def edit_hoa(id):
 
     conn.close()
 
+    logo_display_url = get_logo_public_url(hoa["logo_url"])
+
     return render_template_string(
         BASE_HEAD
         + """
@@ -1060,59 +1079,53 @@ def edit_hoa(id):
 
 <p>
 Estate Name<br>
-<input
-    type="text"
-    name="name"
-    value="{{hoa.name}}"
-    required>
+<input type="text" name="name" value="{{hoa.name}}" required>
 </p>
 
 <p>
 Schema Name<br>
-<input
-    type="text"
-    value="{{hoa.schema_name}}"
-    readonly
-    style="background:#eeeeee;">
+<input type="text"
+       value="{{hoa.schema_name}}"
+       readonly
+       style="background:#eeeeee;">
 </p>
 
 <p>
 Portal Title<br>
-<input
-    type="text"
-    name="portal_title"
-    value="{{hoa.portal_title or ''}}">
+<input type="text"
+       name="portal_title"
+       value="{{hoa.portal_title or ''}}">
 </p>
 
 <p>
 Brand Colour<br>
-<input
-    type="color"
-    name="brand_color"
-    value="{{hoa.brand_color or '#2563eb'}}">
+<input type="color"
+       name="brand_color"
+       value="{{hoa.brand_color or '#2563eb'}}">
 </p>
 
 <p>
-Current Logo URL<br>
-<input
-    type="text"
-    name="logo_url"
-    value="{{hoa.logo_url or ''}}">
+Storage Path<br>
+<input type="text"
+       name="logo_url"
+       value="{{hoa.logo_url or ''}}">
 </p>
 
 <p>
 Upload New Logo<br>
-<input
-    type="file"
-    name="logo"
-    accept=".png,.jpg,.jpeg,.webp">
+<input type="file"
+       name="logo"
+       accept=".png,.jpg,.jpeg,.webp">
 </p>
 
-{% if hoa.logo_url %}
+{% if logo_display_url %}
 <p>
-<img
-    src="{{hoa.logo_url}}"
-    style="max-height:120px;max-width:300px;border:1px solid #ccc;padding:8px;">
+<b>Current Logo</b><br><br>
+<img src="{{logo_display_url}}"
+     style="max-width:350px;
+            max-height:150px;
+            border:1px solid #cccccc;
+            padding:8px;">
 </p>
 {% endif %}
 
@@ -1120,20 +1133,18 @@ Upload New Logo<br>
 
 <p>
 Subscription Start<br>
-<input
-    type="date"
-    name="start"
-    value="{{hoa.subscription_start}}"
-    required>
+<input type="date"
+       name="start"
+       value="{{hoa.subscription_start}}"
+       required>
 </p>
 
 <p>
 Subscription End<br>
-<input
-    type="date"
-    name="end"
-    value="{{hoa.subscription_end}}"
-    required>
+<input type="date"
+       name="end"
+       value="{{hoa.subscription_end}}"
+       required>
 </p>
 
 <br>
@@ -1146,6 +1157,7 @@ Subscription End<br>
 """
         + BASE_TAIL,
         hoa=hoa,
+        logo_display_url=logo_display_url,
     )
 
 # ======================================================
