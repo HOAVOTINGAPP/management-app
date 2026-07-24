@@ -244,22 +244,30 @@ def upload_logo(hoa_id, uploaded_file):
 def get_logo_public_url(storage_path):
 
     if not storage_path:
-        return None
+        return ""
 
-    response = (
-        supabase
-        .storage
-        .from_("logos")
-        .get_public_url(storage_path)
-    )
+    try:
+        response = (
+            supabase
+            .storage
+            .from_("logos")
+            .get_public_url(storage_path)
+        )
 
-    if isinstance(response, str):
-        return response
+        if isinstance(response, str):
+            return response
 
-    if isinstance(response, dict):
-        return response.get("publicUrl")
+        if isinstance(response, dict):
+            return (
+                response.get("publicUrl")
+                or response.get("publicURL")
+                or ""
+            )
 
-    return None
+        return ""
+
+    except Exception:
+        return ""
 
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
