@@ -191,19 +191,55 @@ def upload_logo(hoa_id, uploaded_file):
 
     storage_path = f"{hoa_id}/{filename}"
 
-    file_bytes = uploaded_file.read()
+    try:
 
-    supabase.storage.from_("logos").upload(
-        path=storage_path,
-        file=file_bytes,
-        file_options={
-            "content-type": uploaded_file.content_type,
-            "upsert": True,
-        },
-    )
+        # Remove any existing logo(s) for this HOA
+        existing_files = (
+            supabase
+            .storage
+            .from_("logos")
+            .list(path=str(hoa_id))
+        )
 
-    return storage_path
+        if existing_files:
+            files_to_delete = []
 
+            for item in existing_files:
+                name = item.get("name")
+
+                if name:
+                    files_to_delete.append(f"{hoa_id}/{name}")
+
+            if files_to_delete:
+                (
+                    supabase
+                    .storage
+                    .from_("logos")
+                    .remove(files_to_delete)
+                )
+
+        file_bytes = uploaded_file.read()
+
+        result = (
+            supabase
+            .storage
+            .from_("logos")
+            .upload(
+                path=storage_path,
+                file=file_bytes,
+                file_options={
+                    "content-type": uploaded_file.content_type,
+                    "upsert": True,
+                },
+            )
+        )
+
+        return storage_path
+
+    except Exception as ex:
+        raise RuntimeError(
+            f"Logo upload failed: {ex}"
+        )
 
 def get_logo_public_url(storage_path):
 
