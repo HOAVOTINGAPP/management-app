@@ -220,6 +220,8 @@ def upload_logo(hoa_id, uploaded_file):
 
         file_bytes = uploaded_file.read()
 
+        print("UPLOAD CODE VERSION 2")
+
         result = (
             supabase
             .storage
@@ -228,8 +230,7 @@ def upload_logo(hoa_id, uploaded_file):
                 path=storage_path,
                 file=file_bytes,
                 file_options={
-                    "content-type": uploaded_file.content_type,
-                    "upsert": True
+                    "content-type": uploaded_file.content_type or "application/octet-stream",
                 },
             )
         )
