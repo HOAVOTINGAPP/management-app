@@ -236,10 +236,12 @@ def upload_logo(hoa_id, uploaded_file):
 
         return storage_path
 
-    except Exception as ex:
-        raise RuntimeError(
-            f"Logo upload failed: {ex}"
-        )
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+
+        raise
 
 def get_logo_public_url(storage_path):
 
