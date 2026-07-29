@@ -229,7 +229,7 @@ def upload_logo(hoa_id, uploaded_file):
                 file=file_bytes,
                 file_options={
                     "content-type": uploaded_file.content_type,
-                    "upsert": True,
+                    "upsert": True
                 },
             )
         )
