@@ -887,7 +887,14 @@ def manage_hoa_users(hoa_id):
 <td>{{u.email}}</td>
 <td class="{{'ok' if u.enabled else 'bad'}}">{{'Enabled' if u.enabled else 'Disabled'}}</td>
 <td>
-<a class="btn small" href="/toggle-user/{{u.id}}">Toggle</a>
+    <a class="btn small"
+       href="/dashboard/manage-hoa/{{hoa_id}}/users/{{u.id}}/edit">
+       Edit
+    </a>
+
+    <a class="btn small" href="/toggle-user/{{u.id}}">
+       Toggle
+    </a>
 </td>
 </tr>
 {% endfor %}
@@ -895,7 +902,164 @@ def manage_hoa_users(hoa_id):
 </div>
 """ + BASE_TAIL,
         hoa=hoa,
+        hoa_id=hoa_id,
         users=users
+    )
+
+
+# ======================================================
+# Edit HOA User
+# ======================================================
+
+@app.route(
+    "/dashboard/manage-hoa/<int:hoa_id>/users/<int:user_id>/edit",
+    methods=["GET", "POST"]
+)
+def edit_hoa_user(hoa_id, user_id):
+
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # Confirm that the HOA exists and retrieve the user
+    cur.execute(
+        "SELECT id, name FROM public.hoas WHERE id=%s",
+        (hoa_id,)
+    )
+    hoa = cur.fetchone()
+
+    if not hoa:
+        conn.close()
+        return redirect("/dashboard/manage-hoa")
+
+    cur.execute(
+        """
+        SELECT id, hoa_id, email, enabled
+        FROM public.hoa_users
+        WHERE id=%s AND hoa_id=%s
+        """,
+        (user_id, hoa_id)
+    )
+    user = cur.fetchone()
+
+    if not user:
+        conn.close()
+        return redirect(
+            f"/dashboard/manage-hoa/{hoa_id}/users"
+        )
+
+    msg = None
+    error = None
+
+    if request.method == "POST":
+
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        # Basic validation
+        if not email or not re.fullmatch(
+            r"[^@\s]+@[^@\s]+\.[^@\s]+", email
+        ):
+            error = "Please enter a valid email address."
+
+        elif password and len(password) < 8:
+            error = "The new password must be at least 8 characters."
+
+        else:
+            try:
+                # An empty password means keep the current password.
+                if password:
+                    cur.execute(
+                        """
+                        UPDATE public.hoa_users
+                        SET email=%s, password=%s
+                        WHERE id=%s AND hoa_id=%s
+                        """,
+                        (email, password, user_id, hoa_id)
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE public.hoa_users
+                        SET email=%s
+                        WHERE id=%s AND hoa_id=%s
+                        """,
+                        (email, user_id, hoa_id)
+                    )
+
+                conn.commit()
+                conn.close()
+
+                return redirect(
+                    f"/dashboard/manage-hoa/{hoa_id}/users"
+                )
+
+            except Exception as ex:
+                conn.rollback()
+
+                # PostgreSQL unique-constraint violation
+                if getattr(ex, "pgcode", None) == "23505":
+                    error = (
+                        "This email address is already assigned "
+                        "to another user in this HOA."
+                    )
+                else:
+                    app.logger.exception("Unable to edit HOA user")
+                    error = "Unable to save the changes. Please try again."
+
+    conn.close()
+
+    return render_template_string(
+        BASE_HEAD + """
+        <div class="card">
+            <h2>Edit HOA User</h2>
+            <p>HOA: {{ hoa.name }}</p>
+
+            {% if error %}
+                <p class="bad">{{ error }}</p>
+            {% endif %}
+
+            <form method="post">
+                <p>
+                    Email Address<br>
+                    <input
+                        type="email"
+                        name="email"
+                        value="{{ user.email }}"
+                        required
+                    >
+                </p>
+
+                <p>
+                    New Password<br>
+                    <input
+                        type="password"
+                        name="password"
+                        minlength="8"
+                        autocomplete="new-password"
+                        placeholder="Leave blank to keep current password"
+                    >
+                </p>
+
+                <p class="small">
+                    Leave the password field blank if you do not
+                    want to change the password.
+                </p>
+
+                <button type="submit">Save Changes</button>
+
+                <a class="btn small"
+                   href="/dashboard/manage-hoa/{{ hoa.id }}/users">
+                    Cancel
+                </a>
+            </form>
+        </div>
+        """ + BASE_TAIL,
+        hoa=hoa,
+        user=user,
+        error=error
     )
 
 # ======================================================
